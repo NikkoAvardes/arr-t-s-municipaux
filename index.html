@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -52,13 +53,14 @@ main{max-width:960px;margin:0 auto;padding:28px 20px 48px}
 .liste{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .doc{display:flex;align-items:center;gap:14px;background:var(--carte);border:1px solid var(--filet);border-left:5px solid var(--cat,var(--marine));
   border-radius:6px;padding:10px 12px}
-.doc-ouvrir{flex:1;min-width:0;display:flex;align-items:center;gap:14px;background:none;border:none;text-align:left;padding:2px;color:inherit}
+.doc-ouvrir{flex:1 1 0;min-width:0;cursor:pointer;display:flex;align-items:center;gap:14px;background:none;border:none;text-align:left;padding:2px;color:inherit}
 .doc-ouvrir:hover .nom{text-decoration:underline}
 .vignette{width:56px;height:56px;flex:none;border-radius:4px;background:#e7eaf2 center/cover no-repeat;display:grid;place-items:center;
   color:var(--bordeaux);font-weight:700;font-size:13px;border:1px solid var(--filet)}
-.nom{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.meta{display:block;color:var(--discret);font-size:13px;margin-top:3px}
-.suppr{background:none;border:1px solid var(--filet);color:var(--bordeaux);padding:8px 12px;border-radius:6px;font-size:14px}
+.txt{flex:1;min-width:0}
+.nom{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:600;overflow-wrap:anywhere;line-height:1.3}
+.meta{display:block;color:var(--discret);font-size:13px;margin-top:3px;overflow-wrap:anywhere}
+.suppr{flex:none;white-space:nowrap;background:none;border:1px solid var(--filet);color:var(--bordeaux);padding:8px 12px;border-radius:6px;font-size:14px}
 .suppr:hover{background:var(--bordeaux);color:#fff;border-color:var(--bordeaux)}
 .vide{background:var(--carte);border:1px dashed var(--filet);border-radius:6px;padding:36px 20px;text-align:center;color:var(--discret)}
 
@@ -77,8 +79,17 @@ dialog::backdrop{background:rgba(20,38,79,.6)}
 .lbarre{display:flex;align-items:center;gap:10px;background:var(--marine);color:#fff;padding:10px 14px;border-bottom:3px solid var(--or);flex-wrap:wrap}
 .lbarre strong{flex:1;min-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--serif)}
 .lbarre .btn{padding:8px 12px;font-size:14px;text-decoration:none;display:inline-block}
-.lcorps{flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:0}
+.lbarre .zoom-g .btn{font-size:18px}
+.lcorps{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;display:block;position:relative}
 .lcorps iframe{border:0;width:100%;height:100%;background:#fff}
+.pdfpages{display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px;width:max-content;min-width:100%}
+.pg{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);flex:none}
+.pg canvas{display:block;width:100%;height:100%}
+.msg{color:#fff;text-align:center;padding:40px 20px}
+.zoom-g{display:flex;align-items:center;gap:6px}
+.zoom-g .btn{padding:8px 14px;font-size:18px;line-height:1}
+#zval{color:#fff;min-width:48px;text-align:center;font-size:14px}
+@media (max-width:640px){.lbarre strong{flex:1 0 100%}.lbarre{gap:8px}}
 .lcorps img{max-width:100%;height:auto;display:block;margin:auto;cursor:zoom-in}
 .lcorps img.zoom{max-width:none;cursor:zoom-out}
 .pied{text-align:center;color:var(--discret);font-size:13px;padding:0 20px 28px;max-width:640px;margin:0 auto}
@@ -120,6 +131,12 @@ dialog::backdrop{background:rgba(20,38,79,.6)}
 <dialog id="lecteur" aria-label="Lecture du document">
   <div class="lbarre">
     <strong id="ltitre"></strong>
+    <div class="zoom-g" id="zoomg" hidden>
+      <button class="btn" id="zmoins" aria-label="Réduire">−</button>
+      <span id="zval">100 %</span>
+      <button class="btn" id="zplus" aria-label="Agrandir">+</button>
+      <button class="btn" id="zfit" style="font-size:14px">Ajuster</button>
+    </div>
     <a class="btn" id="longlet" target="_blank" rel="noopener">Ouvrir dans un onglet</a>
     <button class="btn" id="lsuppr" style="color:#8f1f2d">Supprimer</button>
     <button class="btn" id="lferme">Fermer</button>
@@ -129,6 +146,7 @@ dialog::backdrop{background:rgba(20,38,79,.6)}
 
 <div id="etat" role="status" aria-live="polite"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 const CATS = {
   permanent:  { titre:'Arrêté permanent',  lignes:['Arrêté','permanent'],  couleur:'#14264f' },
@@ -226,7 +244,7 @@ async function rubrique(k){
     const ouvrir = el('button', 'doc-ouvrir');
     const vig = el('span', 'vignette');
     if (d.genre === 'image'){ const u = URL.createObjectURL(d.blob); urls.push(u); vig.style.backgroundImage = `url("${u}")`; } else vig.textContent = 'PDF';
-    const txt = el('span'); txt.append(el('span', 'nom', d.nom), el('span', 'meta', `${d.genre === 'pdf' ? 'Document PDF' : 'Photo'} · ${taille(d.taille)} · ajouté le ${dateFr(d.date)}`));
+    const txt = el('span', 'txt'); txt.append(el('span', 'nom', d.nom), el('span', 'meta', `${d.genre === 'pdf' ? 'Document PDF' : 'Photo'} · ${taille(d.taille)} · ajouté le ${dateFr(d.date)}`));
     ouvrir.append(vig, txt); ouvrir.onclick = () => lire(d, k);
     const s = el('button', 'suppr', 'Supprimer'); s.onclick = () => demanderSuppression(d, k);
     li.append(ouvrir, s); ul.appendChild(li);
@@ -249,21 +267,88 @@ $('#fichier').addEventListener('change', async e => {
 });
 
 /* ---------- Lecture ---------- */
-let docOuvert = null, urlOuverte = null;
+let docOuvert = null, urlOuverte = null, pdfDoc = null, zoom = 1, jeton = 0;
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
 function lire(d, k){
   docOuvert = { d, k };
-  const blob = new Blob([d.blob], { type: d.type });
-  urlOuverte = URL.createObjectURL(blob);
+  urlOuverte = URL.createObjectURL(new Blob([d.blob], { type: d.type }));
   $('#ltitre').textContent = d.nom;
   $('#longlet').href = urlOuverte;
   const corps = $('#lcorps'); corps.replaceChildren();
-  if (d.genre === 'pdf'){ const f = document.createElement('iframe'); f.src = urlOuverte; f.title = d.nom; corps.appendChild(f); }
-  else { const i = document.createElement('img'); i.src = urlOuverte; i.alt = d.nom; i.title = 'Toucher pour agrandir ou réduire'; i.onclick = () => i.classList.toggle('zoom'); corps.appendChild(i); }
+  $('#zoomg').hidden = d.genre !== 'pdf';
   $('#lecteur').showModal();
+  if (d.genre === 'pdf') lirePdf(d, corps);
+  else { const i = document.createElement('img'); i.src = urlOuverte; i.alt = d.nom; i.title = 'Toucher pour agrandir ou réduire'; i.onclick = () => i.classList.toggle('zoom'); corps.appendChild(i); }
 }
+
+async function lirePdf(d, corps){
+  corps.appendChild(el('p', 'msg', 'Chargement du document…'));
+  try {
+    if (!window.pdfjsLib) throw new Error('pdfjs');
+    const buf = await new Response(d.blob).arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+    zoom = 1; await dessinerPdf();
+  } catch (e) {
+    corps.replaceChildren();
+    $('#zoomg').hidden = true;
+    const f = document.createElement('iframe'); f.src = urlOuverte; f.title = d.nom; corps.appendChild(f);
+  }
+}
+
+async function dessinerPdf(){
+  if (!pdfDoc) return;
+  const corps = $('#lcorps'), tok = ++jeton;
+  const ratio = corps.scrollHeight ? corps.scrollTop / corps.scrollHeight : 0;
+  const largeur = Math.max(200, corps.clientWidth - 20);
+  const conteneur = el('div', 'pdfpages'), pages = [];
+  for (let n = 1; n <= pdfDoc.numPages; n++){
+    const page = await pdfDoc.getPage(n);
+    if (tok !== jeton) return;
+    const base = page.getViewport({ scale: 1 });
+    const echelle = (largeur / base.width) * zoom;
+    const vp = page.getViewport({ scale: echelle });
+    const bloc = el('div', 'pg'); bloc.style.width = vp.width + 'px'; bloc.style.height = vp.height + 'px';
+    bloc.setAttribute('aria-label', `Page ${n} sur ${pdfDoc.numPages}`);
+    pages.push({ bloc, page, echelle, vp, fait:false });
+    conteneur.appendChild(bloc);
+  }
+  corps.replaceChildren(conteneur);
+  corps.scrollTop = ratio * corps.scrollHeight;
+  $('#zval').textContent = Math.round(zoom * 100) + ' %';
+  const obs = new IntersectionObserver(entrees => {
+    entrees.forEach(en => {
+      if (!en.isIntersecting) return;
+      const p = pages.find(x => x.bloc === en.target);
+      if (!p || p.fait || tok !== jeton) return;
+      p.fait = true; obs.unobserve(p.bloc);
+      let dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      while (p.vp.width * p.vp.height * dpr * dpr > 14e6 && dpr > 1) dpr -= .25;
+      const cv = document.createElement('canvas');
+      cv.width = Math.floor(p.vp.width * dpr); cv.height = Math.floor(p.vp.height * dpr);
+      p.bloc.appendChild(cv);
+      p.page.render({ canvasContext: cv.getContext('2d'), viewport: p.page.getViewport({ scale: p.echelle * dpr }) });
+    });
+  }, { root: corps, rootMargin: '800px 0px' });
+  pages.forEach(p => obs.observe(p.bloc));
+}
+
+function changerZoom(z){
+  z = Math.min(4, Math.max(.5, Math.round(z * 100) / 100));
+  if (z === zoom) return;
+  zoom = z; dessinerPdf();
+}
+$('#zplus').onclick = () => changerZoom(zoom + .25);
+$('#zmoins').onclick = () => changerZoom(zoom - .25);
+$('#zfit').onclick = () => changerZoom(1);
+
 function fermerLecteur(){ $('#lecteur').close(); }
 $('#lferme').onclick = fermerLecteur;
-$('#lecteur').addEventListener('close', () => { $('#lcorps').replaceChildren(); if (urlOuverte) URL.revokeObjectURL(urlOuverte); urlOuverte = null; });
+$('#lecteur').addEventListener('close', () => {
+  jeton++; $('#lcorps').replaceChildren();
+  if (pdfDoc){ pdfDoc.destroy(); pdfDoc = null; }
+  if (urlOuverte) URL.revokeObjectURL(urlOuverte); urlOuverte = null;
+});
 $('#lsuppr').onclick = () => { if (docOuvert) demanderSuppression(docOuvert.d, docOuvert.k); };
 
 /* ---------- Suppression avec confirmation ---------- */
